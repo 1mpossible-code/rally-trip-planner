@@ -13,6 +13,42 @@ interface VoiceRecorderProps {
   onAudioReady: (blob: Blob) => Promise<void>;
 }
 
+function encodeWav(samples: Float32Array, sampleRate: number): Blob {
+  const numChannels = 1;
+  const bitsPerSample = 16;
+  const byteRate = sampleRate * numChannels * (bitsPerSample / 8);
+  const blockAlign = numChannels * (bitsPerSample / 8);
+  const dataSize = samples.length * (bitsPerSample / 8);
+  const buffer = new ArrayBuffer(44 + dataSize);
+  const view = new DataView(buffer);
+
+  const writeString = (offset: number, str: string) => {
+    for (let i = 0; i < str.length; i++) view.setUint8(offset + i, str.charCodeAt(i));
+  };
+
+  writeString(0, "RIFF");
+  view.setUint32(4, 36 + dataSize, true);
+  writeString(8, "WAVE");
+  writeString(12, "fmt ");
+  view.setUint32(16, 16, true);
+  view.setUint16(20, 1, true); // PCM
+  view.setUint16(22, numChannels, true);
+  view.setUint32(24, sampleRate, true);
+  view.setUint32(28, byteRate, true);
+  view.setUint16(32, blockAlign, true);
+  view.setUint16(34, bitsPerSample, true);
+  writeString(36, "data");
+  view.setUint32(40, dataSize, true);
+
+  let offset = 44;
+  for (let i = 0; i < samples.length; i++, offset += 2) {
+    const s = Math.max(-1, Math.min(1, samples[i]));
+    view.setInt16(offset, s < 0 ? s * 0x8000 : s * 0x7fff, true);
+  }
+
+  return new Blob([buffer], { type: "audio/wav" });
+}
+
 export default function VoiceRecorder({ tripId, onResult, onAudioReady }: VoiceRecorderProps) {
   const [recording, setRecording] = useState(false);
   const [processing, setProcessing] = useState(false);
@@ -22,46 +58,68 @@ export default function VoiceRecorder({ tripId, onResult, onAudioReady }: VoiceR
     decision: { action: string };
   } | null>(null);
 
-  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
-  const chunksRef = useRef<Blob[]>([]);
+  const audioCtxRef = useRef<AudioContext | null>(null);
+  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
+  const processorRef = useRef<ScriptProcessorNode | null>(null);
+  const chunksRef = useRef<Float32Array[]>([]);
+  const streamRef = useRef<MediaStream | null>(null);
 
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      const recorder = new MediaRecorder(stream, {
-        mimeType: MediaRecorder.isTypeSupported("audio/webm")
-          ? "audio/webm"
-          : "audio/mp4",
-      });
+      streamRef.current = stream;
+      const audioCtx = new AudioContext({ sampleRate: 16000 });
+      audioCtxRef.current = audioCtx;
+      const source = audioCtx.createMediaStreamSource(stream);
+      sourceRef.current = source;
+      const processor = audioCtx.createScriptProcessor(4096, 1, 1);
+      processorRef.current = processor;
       chunksRef.current = [];
-      recorder.ondataavailable = (e) => {
-        if (e.data.size > 0) chunksRef.current.push(e.data);
+
+      processor.onaudioprocess = (e) => {
+        const data = e.inputBuffer.getChannelData(0);
+        chunksRef.current.push(new Float32Array(data));
       };
-      recorder.onstop = async () => {
-        stream.getTracks().forEach((t) => t.stop());
-        const blob = new Blob(chunksRef.current, { type: recorder.mimeType });
-        setProcessing(true);
-        try {
-          await onAudioReady(blob);
-        } finally {
-          setProcessing(false);
-        }
-      };
-      mediaRecorderRef.current = recorder;
-      recorder.start();
+
+      source.connect(processor);
+      processor.connect(audioCtx.destination);
       setRecording(true);
       setResult(null);
     } catch (err) {
       console.error("Mic access denied", err);
     }
-  }, [onAudioReady]);
-
-  const stopRecording = useCallback(() => {
-    if (mediaRecorderRef.current?.state === "recording") {
-      mediaRecorderRef.current.stop();
-    }
-    setRecording(false);
   }, []);
+
+  const stopRecording = useCallback(async () => {
+    setRecording(false);
+
+    // Disconnect audio nodes
+    processorRef.current?.disconnect();
+    sourceRef.current?.disconnect();
+    streamRef.current?.getTracks().forEach((t) => t.stop());
+
+    const sampleRate = audioCtxRef.current?.sampleRate ?? 16000;
+    audioCtxRef.current?.close();
+
+    // Merge chunks into single buffer
+    const totalLength = chunksRef.current.reduce((acc, c) => acc + c.length, 0);
+    const merged = new Float32Array(totalLength);
+    let offset = 0;
+    for (const chunk of chunksRef.current) {
+      merged.set(chunk, offset);
+      offset += chunk.length;
+    }
+
+    if (merged.length === 0) return;
+
+    const wavBlob = encodeWav(merged, sampleRate);
+    setProcessing(true);
+    try {
+      await onAudioReady(wavBlob);
+    } finally {
+      setProcessing(false);
+    }
+  }, [onAudioReady]);
 
   return (
     <Card className="border-border/60 shadow-sm">
@@ -125,7 +183,6 @@ export default function VoiceRecorder({ tripId, onResult, onAudioReady }: VoiceR
   );
 }
 
-// Export a way to set result from parent
 export type VoiceRecorderHandle = {
   setResult: (r: { transcript: string; agent_message: string; decision: { action: string } }) => void;
 };
