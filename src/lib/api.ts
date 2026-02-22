@@ -27,6 +27,39 @@ function normalizeTripPlan(raw: any): TripPlan {
     })),
   }));
 
+  // Merge transit (flights) into days by start date
+  const transitBlocks: Block[] = (raw.transit ?? []).map((b: any): Block => ({
+    block_id: b.block_id,
+    title: b.title,
+    kind: b.kind,
+    status: b.status,
+    start_time: b.start_time ?? b.start_at,
+    end_time: b.end_time ?? b.end_at,
+    place_ref: b.place_ref,
+    meta: b.meta,
+    notes: b.notes,
+  }));
+
+  for (const tb of transitBlocks) {
+    const tbDate = tb.start_time.slice(0, 10); // YYYY-MM-DD
+    let day = days.find((d) => d.date === tbDate);
+    if (!day) {
+      // Create a new day for this transit block
+      day = { date: tbDate, blocks: [] };
+      days.push(day);
+    }
+    // Only add if not already present
+    if (!day.blocks.some((b) => b.block_id === tb.block_id)) {
+      day.blocks.push(tb);
+    }
+  }
+
+  // Sort days by date, and blocks within each day by start_time
+  days.sort((a, b) => a.date.localeCompare(b.date));
+  for (const d of days) {
+    d.blocks.sort((a, b) => a.start_time.localeCompare(b.start_time));
+  }
+
   return {
     trip_id: raw.trip_id,
     timezone: raw.timezone,
