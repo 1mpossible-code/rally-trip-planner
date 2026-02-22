@@ -107,6 +107,11 @@ export default function Index() {
       setTrip(trip); // revert
       toast({ title: "Skip failed", description: err.message, variant: "destructive" });
     }
+    // Re-fetch to ensure latest state
+    try {
+      const fresh = await api.getTrip(trip.trip_id);
+      persistTrip(fresh);
+    } catch {}
   };
 
   // Change
@@ -122,6 +127,11 @@ export default function Index() {
     } catch (err: any) {
       toast({ title: "Change failed", description: err.message, variant: "destructive" });
     }
+    // Re-fetch to ensure latest state
+    try {
+      const fresh = await api.getTrip(trip.trip_id);
+      persistTrip(fresh);
+    } catch {}
   };
 
   // Voice

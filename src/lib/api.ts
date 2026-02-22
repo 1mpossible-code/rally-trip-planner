@@ -73,10 +73,16 @@ export async function changeBlock(
   return normalizeTripPlan(raw);
 }
 
+export async function getTrip(tripId: string): Promise<TripPlan> {
+  const res = await fetch(`${BASE}/v1/trips/${tripId}`);
+  const raw = await json<any>(res);
+  return normalizeTripPlan(raw);
+}
+
 export async function voiceIntent(tripId: string, audioBlob: Blob): Promise<VoiceIntentResponse> {
   const form = new FormData();
   form.append("trip_id", tripId);
-  form.append("audio", new File([audioBlob], "audio.webm", { type: audioBlob.type }));
+  form.append("audio", new File([audioBlob], "voice.wav", { type: "audio/wav" }));
   const res = await fetch(`${BASE}/v1/voice/intent`, {
     method: "POST",
     body: form,
