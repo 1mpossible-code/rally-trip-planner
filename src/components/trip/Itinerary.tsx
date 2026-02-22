@@ -17,6 +17,7 @@ interface ItineraryProps {
   onToggleLike: (blockId: string) => void;
   onSkip: (blockId: string) => Promise<void>;
   onChange: (blockId: string, text: string, direction?: string) => Promise<void>;
+  onHoverBlock?: (blockId: string | null) => void;
 }
 
 export default function Itinerary({
@@ -25,6 +26,7 @@ export default function Itinerary({
   onToggleLike,
   onSkip,
   onChange,
+  onHoverBlock,
 }: ItineraryProps) {
   const [likedOnly, setLikedOnly] = useState(false);
 
@@ -99,15 +101,20 @@ export default function Itinerary({
                     </p>
                   ) : (
                     blocks.map((block) => (
-                      <BlockCard
+                      <div
                         key={block.block_id}
-                        block={block}
-                        timezone={trip.timezone}
-                        liked={prefs.likedBlockIds.includes(block.block_id)}
-                        onToggleLike={onToggleLike}
-                        onSkip={onSkip}
-                        onChange={onChange}
-                      />
+                        onMouseEnter={() => onHoverBlock?.(block.block_id)}
+                        onMouseLeave={() => onHoverBlock?.(null)}
+                      >
+                        <BlockCard
+                          block={block}
+                          timezone={trip.timezone}
+                          liked={prefs.likedBlockIds.includes(block.block_id)}
+                          onToggleLike={onToggleLike}
+                          onSkip={onSkip}
+                          onChange={onChange}
+                        />
+                      </div>
                     ))
                   )}
                 </div>

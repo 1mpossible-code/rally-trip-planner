@@ -5,6 +5,7 @@ import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
 import TripForm from "@/components/trip/TripForm";
 import Itinerary from "@/components/trip/Itinerary";
+import TripMap from "@/components/trip/TripMap";
 import VoiceRecorder from "@/components/trip/VoiceRecorder";
 import * as api from "@/lib/api";
 import { saveWithTTL, loadWithTTL, clearKeys, KEYS } from "@/lib/persist";
@@ -17,6 +18,7 @@ export default function Index() {
   const [savedInputs, setSavedInputs] = useState<TripFormInputs | null>(null);
   const [loading, setLoading] = useState(false);
   const [hydrating, setHydrating] = useState(false);
+  const [hoveredBlockId, setHoveredBlockId] = useState<string | null>(null);
 
   // Fetch trip by ID (always fresh from API)
   const fetchTrip = useCallback(async (tripId: string) => {
@@ -166,8 +168,8 @@ export default function Index() {
   return (
     <div className="min-h-screen bg-background">
       {/* Header */}
-      <header className="border-b border-border/60 bg-card/80 backdrop-blur-sm sticky top-0 z-10">
-        <div className="container max-w-3xl mx-auto flex items-center justify-between py-4 px-4">
+      <header className="border-b border-border/60 bg-card/80 backdrop-blur-sm sticky top-0 z-20">
+        <div className="container max-w-7xl mx-auto flex items-center justify-between py-4 px-4">
           <div className="flex items-center gap-2">
             <MapPin className="h-5 w-5 text-primary" />
             <h1 className="text-lg font-semibold tracking-tight">Rally</h1>
@@ -190,7 +192,7 @@ export default function Index() {
       </header>
 
       {/* Main */}
-      <main className="container max-w-3xl mx-auto px-4 py-8 space-y-8">
+      <main className="container max-w-7xl mx-auto px-4 py-8">
         {/* Loading on hydrate */}
         {hydrating && (
           <div className="flex items-center justify-center py-12">
@@ -199,49 +201,60 @@ export default function Index() {
           </div>
         )}
 
-        {/* Form */}
+        {/* Form (full width when no trip) */}
         {!trip && !hydrating && (
-          <TripForm
-            initialInputs={savedInputs}
-            onSubmit={handleCreate}
-            loading={loading}
-          />
-        )}
-
-        {/* Voice */}
-        {trip && (
-          <VoiceRecorder
-            tripId={trip.trip_id}
-            onResult={() => {}}
-            onAudioReady={async (blob) => {
-              const res = await handleVoice(blob);
-              // VoiceRecorder handles its own display via the returned result
-            }}
-          />
-        )}
-
-        {/* Itinerary */}
-        {trip && (
-          <Itinerary
-            trip={trip}
-            prefs={prefs}
-            onToggleLike={toggleLike}
-            onSkip={handleSkip}
-            onChange={handleChange}
-          />
-        )}
-
-        {/* Show form again when trip exists */}
-        {trip && (
-          <div className="pt-4 border-t border-border/60">
-            <p className="text-sm text-muted-foreground mb-4">
-              Want a different trip? Delete the current one or plan a new one below.
-            </p>
+          <div className="max-w-3xl mx-auto">
             <TripForm
               initialInputs={savedInputs}
               onSubmit={handleCreate}
               loading={loading}
             />
+          </div>
+        )}
+
+        {/* Side-by-side layout when trip exists */}
+        {trip && (
+          <div className="flex gap-6">
+            {/* Left: itinerary */}
+            <div className="flex-1 min-w-0 space-y-8">
+              {/* Voice */}
+              <VoiceRecorder
+                tripId={trip.trip_id}
+                onResult={() => {}}
+                onAudioReady={async (blob) => {
+                  await handleVoice(blob);
+                }}
+              />
+
+              {/* Itinerary */}
+              <Itinerary
+                trip={trip}
+                prefs={prefs}
+                onToggleLike={toggleLike}
+                onSkip={handleSkip}
+                onChange={handleChange}
+                onHoverBlock={setHoveredBlockId}
+              />
+
+              {/* New trip form */}
+              <div className="pt-4 border-t border-border/60">
+                <p className="text-sm text-muted-foreground mb-4">
+                  Want a different trip? Delete the current one or plan a new one below.
+                </p>
+                <TripForm
+                  initialInputs={savedInputs}
+                  onSubmit={handleCreate}
+                  loading={loading}
+                />
+              </div>
+            </div>
+
+            {/* Right: sticky map */}
+            <div className="hidden lg:block w-[440px] shrink-0">
+              <div className="sticky top-20 h-[calc(100vh-6rem)]">
+                <TripMap trip={trip} hoveredBlockId={hoveredBlockId} />
+              </div>
+            </div>
           </div>
         )}
       </main>
