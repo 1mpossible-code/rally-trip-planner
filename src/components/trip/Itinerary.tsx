@@ -60,9 +60,19 @@ export default function Itinerary({
       {/* Days */}
       <Accordion type="multiple" defaultValue={defaultOpen}>
         {days.map((day, i) => {
+          // Find flight windows to hide overlapping/conflicting blocks
+          const flights = day.blocks.filter((b) => b.kind === "flight");
+          const visibleBlocks = day.blocks.filter((b) => {
+            if (b.kind === "flight") return true;
+            // Hide blocks that overlap with any flight's time range
+            return !flights.some(
+              (f) => b.start_time < f.end_time && b.end_time > f.start_time
+            );
+          });
+
           const blocks = likedOnly
-            ? day.blocks.filter((b) => prefs.likedBlockIds.includes(b.block_id))
-            : day.blocks;
+            ? visibleBlocks.filter((b) => prefs.likedBlockIds.includes(b.block_id))
+            : visibleBlocks;
 
           return (
             <AccordionItem value={`day-${i}`} key={day.date}>
