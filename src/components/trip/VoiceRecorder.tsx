@@ -13,6 +13,27 @@ interface VoiceRecorderProps {
   onAudioReady: (blob: Blob) => Promise<void>;
 }
 
+/** Decode any audio blob to PCM samples, then encode as 16-bit WAV */
+async function blobToWav(blob: Blob): Promise<Blob> {
+  const arrayBuffer = await blob.arrayBuffer();
+  const audioCtx = new (window.AudioContext || (window as any).webkitAudioContext)();
+  const decoded = await audioCtx.decodeAudioData(arrayBuffer);
+  await audioCtx.close();
+
+  // Take first channel, downsample to 16kHz
+  const sourceSamples = decoded.getChannelData(0);
+  const sourceSR = decoded.sampleRate;
+  const targetSR = 16000;
+  const ratio = sourceSR / targetSR;
+  const targetLength = Math.floor(sourceSamples.length / ratio);
+  const samples = new Float32Array(targetLength);
+  for (let i = 0; i < targetLength; i++) {
+    samples[i] = sourceSamples[Math.floor(i * ratio)];
+  }
+
+  return encodeWav(samples, targetSR);
+}
+
 function encodeWav(samples: Float32Array, sampleRate: number): Blob {
   const numChannels = 1;
   const bitsPerSample = 16;
@@ -31,7 +52,7 @@ function encodeWav(samples: Float32Array, sampleRate: number): Blob {
   writeString(8, "WAVE");
   writeString(12, "fmt ");
   view.setUint32(16, 16, true);
-  view.setUint16(20, 1, true); // PCM
+  view.setUint16(20, 1, true);
   view.setUint16(22, numChannels, true);
   view.setUint32(24, sampleRate, true);
   view.setUint32(28, byteRate, true);
@@ -58,68 +79,49 @@ export default function VoiceRecorder({ tripId, onResult, onAudioReady }: VoiceR
     decision: { action: string };
   } | null>(null);
 
-  const audioCtxRef = useRef<AudioContext | null>(null);
-  const sourceRef = useRef<MediaStreamAudioSourceNode | null>(null);
-  const processorRef = useRef<ScriptProcessorNode | null>(null);
-  const chunksRef = useRef<Float32Array[]>([]);
-  const streamRef = useRef<MediaStream | null>(null);
+  const mediaRecorderRef = useRef<MediaRecorder | null>(null);
+  const chunksRef = useRef<Blob[]>([]);
 
   const startRecording = useCallback(async () => {
     try {
       const stream = await navigator.mediaDevices.getUserMedia({ audio: true });
-      streamRef.current = stream;
-      const audioCtx = new AudioContext({ sampleRate: 16000 });
-      audioCtxRef.current = audioCtx;
-      const source = audioCtx.createMediaStreamSource(stream);
-      sourceRef.current = source;
-      const processor = audioCtx.createScriptProcessor(4096, 1, 1);
-      processorRef.current = processor;
+      const recorder = new MediaRecorder(stream, {
+        mimeType: MediaRecorder.isTypeSupported("audio/webm")
+          ? "audio/webm"
+          : "audio/mp4",
+      });
       chunksRef.current = [];
-
-      processor.onaudioprocess = (e) => {
-        const data = e.inputBuffer.getChannelData(0);
-        chunksRef.current.push(new Float32Array(data));
+      recorder.ondataavailable = (e) => {
+        if (e.data.size > 0) chunksRef.current.push(e.data);
       };
-
-      source.connect(processor);
-      processor.connect(audioCtx.destination);
+      recorder.onstop = async () => {
+        stream.getTracks().forEach((t) => t.stop());
+        const rawBlob = new Blob(chunksRef.current, { type: recorder.mimeType });
+        setProcessing(true);
+        try {
+          const wavBlob = await blobToWav(rawBlob);
+          await onAudioReady(wavBlob);
+        } catch (err) {
+          console.error("WAV conversion failed", err);
+        } finally {
+          setProcessing(false);
+        }
+      };
+      mediaRecorderRef.current = recorder;
+      recorder.start();
       setRecording(true);
       setResult(null);
     } catch (err) {
       console.error("Mic access denied", err);
     }
-  }, []);
-
-  const stopRecording = useCallback(async () => {
-    setRecording(false);
-
-    // Disconnect audio nodes
-    processorRef.current?.disconnect();
-    sourceRef.current?.disconnect();
-    streamRef.current?.getTracks().forEach((t) => t.stop());
-
-    const sampleRate = audioCtxRef.current?.sampleRate ?? 16000;
-    audioCtxRef.current?.close();
-
-    // Merge chunks into single buffer
-    const totalLength = chunksRef.current.reduce((acc, c) => acc + c.length, 0);
-    const merged = new Float32Array(totalLength);
-    let offset = 0;
-    for (const chunk of chunksRef.current) {
-      merged.set(chunk, offset);
-      offset += chunk.length;
-    }
-
-    if (merged.length === 0) return;
-
-    const wavBlob = encodeWav(merged, sampleRate);
-    setProcessing(true);
-    try {
-      await onAudioReady(wavBlob);
-    } finally {
-      setProcessing(false);
-    }
   }, [onAudioReady]);
+
+  const stopRecording = useCallback(() => {
+    if (mediaRecorderRef.current?.state === "recording") {
+      mediaRecorderRef.current.stop();
+    }
+    setRecording(false);
+  }, []);
 
   return (
     <Card className="border-border/60 shadow-sm">
