@@ -12,6 +12,7 @@ async function json<T>(res: Response): Promise<T> {
 
 /** Map API response shape to our frontend TripPlan shape */
 function normalizeTripPlan(raw: any): TripPlan {
+  console.log("[normalize] raw.transit:", JSON.stringify(raw.transit?.length), raw.transit);
   const days: Day[] = (raw.itinerary ?? raw.days ?? []).map((d: any) => ({
     date: d.date,
     blocks: (d.blocks ?? []).map((b: any): Block => ({
