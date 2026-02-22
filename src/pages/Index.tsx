@@ -65,7 +65,8 @@ export default function Index() {
   const handleCreate = async (inputs: TripFormInputs) => {
     setLoading(true);
     try {
-      const plan = await api.createTrip(inputs);
+      const minDelay = new Promise((r) => setTimeout(r, 5000));
+      const [plan] = await Promise.all([api.createTrip(inputs), minDelay]);
       setTrip(plan);
       persistTripId(plan.trip_id);
       saveWithTTL(KEYS.INPUTS, inputs);
