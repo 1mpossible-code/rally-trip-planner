@@ -123,3 +123,8 @@
     @apply tracking-tight;
   }
 }
+
+.leaflet-marker-highlight {
+  filter: hue-rotate(200deg) saturate(2) brightness(1.1);
+  transition: filter 0.2s ease;
+}
