@@ -47,7 +47,8 @@ export default function Index() {
     clearKeys([KEYS.TRIP_PLAN]);
     if (tripId) {
       setHydrating(true);
-      fetchTrip(tripId).finally(() => setHydrating(false));
+      const minDelay = new Promise((r) => setTimeout(r, 5000));
+      Promise.all([fetchTrip(tripId), minDelay]).finally(() => setHydrating(false));
     }
   }, [fetchTrip]);
 
@@ -179,7 +180,7 @@ export default function Index() {
     <div className="min-h-screen bg-background">
       <MultiStepLoader
         loadingStates={LOADING_STATES}
-        loading={loading}
+        loading={loading || hydrating}
         duration={1800}
         loop={false}
       />
