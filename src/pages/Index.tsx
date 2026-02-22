@@ -1,5 +1,6 @@
 import { useState, useCallback, useEffect } from "react";
 import { Trash2, Download, Save, MapPin, Loader2 } from "lucide-react";
+import { MultiStepLoader } from "@/components/ui/multi-step-loader";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -165,9 +166,23 @@ export default function Index() {
     }
   };
 
-  return (
+    const LOADING_STATES = [
+      { text: "Finding the best flights" },
+      { text: "Scouting neighborhoods" },
+      { text: "Curating restaurants & cafés" },
+      { text: "Mapping out activities" },
+      { text: "Building your itinerary" },
+      { text: "Almost there…" },
+    ];
+
+    return (
     <div className="min-h-screen bg-background">
-      {/* Header */}
+      <MultiStepLoader
+        loadingStates={LOADING_STATES}
+        loading={loading}
+        duration={1800}
+        loop={false}
+      />
       <header className="border-b border-border/60 bg-card/80 backdrop-blur-sm sticky top-0 z-20">
         <div className="container max-w-7xl mx-auto flex items-center justify-between py-4 px-4">
           <div className="flex items-center gap-2">
