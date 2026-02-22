@@ -20,10 +20,27 @@ export default function Index() {
 
   // Hydrate on mount
   useEffect(() => {
-    const t = loadWithTTL<TripPlan>(KEYS.TRIP_PLAN);
+    const t = loadWithTTL<any>(KEYS.TRIP_PLAN);
     const p = loadWithTTL<TripPrefs>(KEYS.PREFS);
     const i = loadWithTTL<TripFormInputs>(KEYS.INPUTS);
-    if (t) { setTrip(t); setHasSaved(true); }
+    if (t) {
+      // Normalize legacy cached data that may have itinerary instead of days
+      if (!t.days && t.itinerary) {
+        t.days = t.itinerary;
+      }
+      if (t.days) {
+        t.days = t.days.map((d: any) => ({
+          ...d,
+          blocks: (d.blocks ?? []).map((b: any) => ({
+            ...b,
+            start_time: b.start_time ?? b.start_at,
+            end_time: b.end_time ?? b.end_at,
+          })),
+        }));
+      }
+      setTrip(t);
+      setHasSaved(true);
+    }
     if (p) setPrefs(p);
     if (i) setSavedInputs(i);
   }, []);

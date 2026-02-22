@@ -28,7 +28,8 @@ export default function Itinerary({
 }: ItineraryProps) {
   const [likedOnly, setLikedOnly] = useState(false);
 
-  const defaultOpen = trip.days.map((_, i) => `day-${i}`);
+  const days = trip.days ?? [];
+  const defaultOpen = days.map((_, i) => `day-${i}`);
 
   return (
     <div className="space-y-4">
@@ -58,7 +59,7 @@ export default function Itinerary({
 
       {/* Days */}
       <Accordion type="multiple" defaultValue={defaultOpen}>
-        {trip.days.map((day, i) => {
+        {days.map((day, i) => {
           const blocks = likedOnly
             ? day.blocks.filter((b) => prefs.likedBlockIds.includes(b.block_id))
             : day.blocks;
