@@ -1,5 +1,5 @@
 import { useState, useCallback, useEffect } from "react";
-import { Trash2, Download, Save, MapPin } from "lucide-react";
+import { Trash2, Download, Save, MapPin, Loader2 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
 import { useToast } from "@/hooks/use-toast";
@@ -15,40 +15,41 @@ export default function Index() {
   const [trip, setTrip] = useState<TripPlan | null>(null);
   const [prefs, setPrefs] = useState<TripPrefs>({ likedBlockIds: [] });
   const [savedInputs, setSavedInputs] = useState<TripFormInputs | null>(null);
-  const [hasSaved, setHasSaved] = useState(false);
   const [loading, setLoading] = useState(false);
+  const [hydrating, setHydrating] = useState(false);
 
-  // Hydrate on mount
-  useEffect(() => {
-    const t = loadWithTTL<any>(KEYS.TRIP_PLAN);
-    const p = loadWithTTL<TripPrefs>(KEYS.PREFS);
-    const i = loadWithTTL<TripFormInputs>(KEYS.INPUTS);
-    if (t) {
-      // Normalize legacy cached data that may have itinerary instead of days
-      if (!t.days && t.itinerary) {
-        t.days = t.itinerary;
-      }
-      if (t.days) {
-        t.days = t.days.map((d: any) => ({
-          ...d,
-          blocks: (d.blocks ?? []).map((b: any) => ({
-            ...b,
-            start_time: b.start_time ?? b.start_at,
-            end_time: b.end_time ?? b.end_at,
-          })),
-        }));
-      }
-      setTrip(t);
-      setHasSaved(true);
+  // Fetch trip by ID (always fresh from API)
+  const fetchTrip = useCallback(async (tripId: string) => {
+    try {
+      const fresh = await api.getTrip(tripId);
+      setTrip(fresh);
+      return fresh;
+    } catch (err: any) {
+      console.error("Failed to fetch trip", err);
+      // Trip no longer exists on server — clear stored ID
+      clearKeys([KEYS.TRIP_ID]);
+      setTrip(null);
+      return null;
     }
-    if (p) setPrefs(p);
-    if (i) setSavedInputs(i);
   }, []);
 
-  const persistTrip = useCallback((plan: TripPlan) => {
-    setTrip(plan);
-    saveWithTTL(KEYS.TRIP_PLAN, plan);
-    setHasSaved(true);
+  // Hydrate on mount — load trip_id from localStorage, fetch fresh data
+  useEffect(() => {
+    const tripId = loadWithTTL<string>(KEYS.TRIP_ID);
+    const p = loadWithTTL<TripPrefs>(KEYS.PREFS);
+    const i = loadWithTTL<TripFormInputs>(KEYS.INPUTS);
+    if (p) setPrefs(p);
+    if (i) setSavedInputs(i);
+    // Clean up old keys
+    clearKeys([KEYS.TRIP_PLAN]);
+    if (tripId) {
+      setHydrating(true);
+      fetchTrip(tripId).finally(() => setHydrating(false));
+    }
+  }, [fetchTrip]);
+
+  const persistTripId = useCallback((tripId: string) => {
+    saveWithTTL(KEYS.TRIP_ID, tripId);
   }, []);
 
   const persistPrefs = useCallback((p: TripPrefs) => {
@@ -61,7 +62,8 @@ export default function Index() {
     setLoading(true);
     try {
       const plan = await api.createTrip(inputs);
-      persistTrip(plan);
+      setTrip(plan);
+      persistTripId(plan.trip_id);
       saveWithTTL(KEYS.INPUTS, inputs);
       setSavedInputs(inputs);
       toast({ title: "Trip generated!", description: `${plan.days.length} days planned.` });
@@ -89,7 +91,6 @@ export default function Index() {
   // Skip
   const handleSkip = async (blockId: string) => {
     if (!trip) return;
-    // optimistic
     const optimistic = {
       ...trip,
       days: trip.days.map((d) => ({
@@ -101,37 +102,27 @@ export default function Index() {
     };
     setTrip(optimistic);
     try {
-      const updated = await api.skipBlock(trip.trip_id, blockId);
-      persistTrip(updated);
+      await api.skipBlock(trip.trip_id, blockId);
     } catch (err: any) {
-      setTrip(trip); // revert
+      setTrip(trip);
       toast({ title: "Skip failed", description: err.message, variant: "destructive" });
     }
-    // Re-fetch to ensure latest state
-    try {
-      const fresh = await api.getTrip(trip.trip_id);
-      persistTrip(fresh);
-    } catch {}
+    await fetchTrip(trip.trip_id);
   };
 
   // Change
   const handleChange = async (blockId: string, text: string, direction?: string) => {
     if (!trip) return;
     try {
-      const updated = await api.changeBlock(trip.trip_id, blockId, {
+      await api.changeBlock(trip.trip_id, blockId, {
         preference_text: text,
         direction: direction as any,
       });
-      persistTrip(updated);
       toast({ title: "Block updated" });
     } catch (err: any) {
       toast({ title: "Change failed", description: err.message, variant: "destructive" });
     }
-    // Re-fetch to ensure latest state
-    try {
-      const fresh = await api.getTrip(trip.trip_id);
-      persistTrip(fresh);
-    } catch {}
+    await fetchTrip(trip.trip_id);
   };
 
   // Voice
@@ -139,7 +130,7 @@ export default function Index() {
     if (!trip) return;
     try {
       const res = await api.voiceIntent(trip.trip_id, blob);
-      persistTrip(res.trip);
+      setTrip(res.trip);
       return res;
     } catch (err: any) {
       toast({ title: "Voice command failed", description: err.message, variant: "destructive" });
@@ -149,11 +140,10 @@ export default function Index() {
 
   // Delete saved
   const handleDelete = () => {
-    clearKeys([KEYS.TRIP_PLAN, KEYS.PREFS, KEYS.INPUTS]);
+    clearKeys([KEYS.TRIP_ID, KEYS.PREFS, KEYS.INPUTS]);
     setTrip(null);
     setPrefs({ likedBlockIds: [] });
     setSavedInputs(null);
-    setHasSaved(false);
     toast({ title: "Saved trip deleted" });
   };
 
@@ -183,12 +173,6 @@ export default function Index() {
             <h1 className="text-lg font-semibold tracking-tight">Rally</h1>
           </div>
           <div className="flex items-center gap-2">
-            {hasSaved && (
-              <Badge variant="secondary" className="text-xs gap-1">
-                <Save className="h-3 w-3" />
-                Saved locally
-              </Badge>
-            )}
             {trip && (
               <>
                 <Button variant="outline" size="sm" onClick={handleExport}>
@@ -207,8 +191,16 @@ export default function Index() {
 
       {/* Main */}
       <main className="container max-w-3xl mx-auto px-4 py-8 space-y-8">
+        {/* Loading on hydrate */}
+        {hydrating && (
+          <div className="flex items-center justify-center py-12">
+            <Loader2 className="h-6 w-6 animate-spin text-primary" />
+            <span className="ml-2 text-sm text-muted-foreground">Loading your trip…</span>
+          </div>
+        )}
+
         {/* Form */}
-        {!trip && (
+        {!trip && !hydrating && (
           <TripForm
             initialInputs={savedInputs}
             onSubmit={handleCreate}
