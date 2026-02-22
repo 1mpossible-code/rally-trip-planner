@@ -1,4 +1,4 @@
-import type { TripPlan, TripFormInputs, ChangeBlockPayload, VoiceIntentResponse } from "./types";
+import type { TripPlan, TripFormInputs, ChangeBlockPayload, VoiceIntentResponse, Block, Day } from "./types";
 
 const BASE = import.meta.env.VITE_RALLY_API_BASE || "http://localhost:8080";
 
@@ -10,20 +10,53 @@ async function json<T>(res: Response): Promise<T> {
   return res.json();
 }
 
+/** Map API response shape to our frontend TripPlan shape */
+function normalizeTripPlan(raw: any): TripPlan {
+  const days: Day[] = (raw.itinerary ?? raw.days ?? []).map((d: any) => ({
+    date: d.date,
+    blocks: (d.blocks ?? []).map((b: any): Block => ({
+      block_id: b.block_id,
+      title: b.title,
+      kind: b.kind,
+      status: b.status,
+      start_time: b.start_time ?? b.start_at,
+      end_time: b.end_time ?? b.end_at,
+      place_ref: b.place_ref,
+      meta: b.meta,
+      notes: b.notes,
+    })),
+  }));
+
+  return {
+    trip_id: raw.trip_id,
+    timezone: raw.timezone,
+    origin: raw.inputs?.origin ?? raw.origin ?? "",
+    destinations: raw.inputs?.destinations ?? raw.destinations ?? [],
+    start_date: raw.inputs?.start_date ?? raw.start_date ?? "",
+    end_date: raw.inputs?.end_date ?? raw.end_date ?? "",
+    budget_level: raw.inputs?.budget_level ?? raw.budget_level ?? "mid",
+    interests: raw.inputs?.interests ?? raw.interests ?? [],
+    neighborhoods: raw.inputs?.neighborhoods ?? raw.neighborhoods ?? [],
+    days,
+  };
+}
+
 export async function createTrip(input: TripFormInputs): Promise<TripPlan> {
   const res = await fetch(`${BASE}/v1/trips`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(input),
   });
-  return json<TripPlan>(res);
+  const raw = await json<any>(res);
+  return normalizeTripPlan(raw);
 }
 
 export async function skipBlock(tripId: string, blockId: string): Promise<TripPlan> {
   const res = await fetch(`${BASE}/v1/trips/${tripId}/blocks/${blockId}/skip`, {
     method: "POST",
   });
-  return json<TripPlan>(res);
+  const raw = await json<any>(res);
+  return normalizeTripPlan(raw);
 }
 
 export async function changeBlock(
@@ -36,7 +69,8 @@ export async function changeBlock(
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(payload),
   });
-  return json<TripPlan>(res);
+  const raw = await json<any>(res);
+  return normalizeTripPlan(raw);
 }
 
 export async function voiceIntent(tripId: string, audioBlob: Blob): Promise<VoiceIntentResponse> {
@@ -47,7 +81,8 @@ export async function voiceIntent(tripId: string, audioBlob: Blob): Promise<Voic
     method: "POST",
     body: form,
   });
-  return json<VoiceIntentResponse>(res);
+  const raw = await json<any>(res);
+  return { ...raw, trip: normalizeTripPlan(raw.trip) };
 }
 
 export async function downloadCalendar(tripId: string): Promise<Blob> {
