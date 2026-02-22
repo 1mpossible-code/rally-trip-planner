@@ -6,6 +6,7 @@ import {
   SkipForward,
   RefreshCw,
   Loader2,
+  Plane,
 } from "lucide-react";
 import { Button } from "@/components/ui/button";
 import { Badge } from "@/components/ui/badge";
@@ -29,7 +30,7 @@ import { Label } from "@/components/ui/label";
 import type { Block } from "@/lib/types";
 
 const KIND_COLORS: Record<string, string> = {
-  flight: "bg-primary text-primary-foreground",
+  flight: "bg-[hsl(var(--travel-flight))] text-[hsl(var(--travel-flight-foreground))]",
   cafe: "bg-accent text-accent-foreground",
   attraction: "bg-travel-sky text-foreground",
   lunch: "bg-secondary text-secondary-foreground",
@@ -102,16 +103,21 @@ export default function BlockCard({
   };
 
   const kindClass = KIND_COLORS[block.kind] || "bg-muted text-muted-foreground";
+  const isFlight = block.kind === "flight";
 
   return (
     <>
-      <Card className="border-border/50 shadow-sm hover:shadow-md transition-shadow">
+      <Card className={`shadow-sm hover:shadow-md transition-shadow ${isFlight ? "border-[hsl(var(--travel-flight))]/40 bg-[hsl(var(--travel-flight-bg))]" : "border-border/50"}`}>
         <CardContent className="p-4">
           <div className="flex items-start justify-between gap-3">
             {/* Timeline dot + content */}
             <div className="flex gap-3 flex-1 min-w-0">
               <div className="flex flex-col items-center pt-1">
-                <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0" />
+                {isFlight ? (
+                  <Plane className="h-4 w-4 text-[hsl(var(--travel-flight))] shrink-0" />
+                ) : (
+                  <div className="w-2.5 h-2.5 rounded-full bg-primary shrink-0" />
+                )}
                 <div className="w-px flex-1 bg-border mt-1" />
               </div>
               <div className="flex-1 min-w-0 space-y-2">

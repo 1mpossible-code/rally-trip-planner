@@ -52,6 +52,9 @@
     --travel-sand: 30 40% 88%;
     --travel-sky: 200 70% 94%;
     --travel-sunset: 15 80% 60%;
+    --travel-flight: 260 50% 55%;
+    --travel-flight-foreground: 260 40% 98%;
+    --travel-flight-bg: 260 50% 96%;
   }
 
   .dark {
@@ -100,6 +103,9 @@
     --travel-sand: 30 20% 22%;
     --travel-sky: 200 30% 18%;
     --travel-sunset: 15 60% 50%;
+    --travel-flight: 260 45% 65%;
+    --travel-flight-foreground: 260 30% 95%;
+    --travel-flight-bg: 260 30% 15%;
   }
 }
 
