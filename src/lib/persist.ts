@@ -34,7 +34,9 @@ export function clearKeys(keys: string[]): void {
 }
 
 export const KEYS = {
-  TRIP_PLAN: "rally_trip_plan_v1",
+  TRIP_ID: "rally_trip_id_v2",
   PREFS: "rally_trip_prefs_v1",
   INPUTS: "rally_trip_inputs_v1",
+  /** @deprecated kept for cleanup of old data */
+  TRIP_PLAN: "rally_trip_plan_v1",
 } as const;
